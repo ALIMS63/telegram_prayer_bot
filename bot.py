@@ -56,7 +56,7 @@ async def schedule_notifications():
     message = "<b>Фаджр</b>: 04:16\n<b>Зухр</b>: 12:20\n<b>Аср</b>: 15:54"
 
     await send_telegram_message(msg)
-    print(f"Текущее время: {datetime.datetime.now()}")
+    await send_telegram_message(datetime.datetime.now())
     
     notified = set()
 
