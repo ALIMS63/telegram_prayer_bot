@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 import asyncio
 import datetime
 import aiohttp
@@ -42,40 +43,50 @@ PRAYER_TIMES = {
 # Время в минутах до намаза для уведомления
 NOTIFY_BEFORE_MINUTES = 10
 
+# Часовой пояс МСК
+LOCAL_TIMEZONE = ZoneInfo("Europe/Moscow")
+
+def get_local_now():
+    return datetime.datetime.now(datetime.UTC).astimezone(LOCAL_TIMEZONE)
+
 async def send_telegram_message(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}) as resp:
+        async with session.post(url, data={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML"
+        }) as resp:
             if resp.status != 200:
                 print(f"Ошибка отправки сообщения: {resp.status}")
             else:
                 print(f"Сообщение отправлено: {text}")
 
 async def schedule_notifications():
-    msg = f"🕌 Prayer tracker is running... "
-    message = "<b>Фаджр</b>: 04:16\n<b>Зухр</b>: 12:20\n<b>Аср</b>: 15:54"
+    await send_telegram_message("🕌 Prayer tracker is running...")
+    await send_telegram_message(f"<i>Время запуска: {get_local_now().strftime('%H:%M:%S')}</i>")
 
-    await send_telegram_message(msg)
-    await send_telegram_message(datetime.datetime.now())
-    
     notified = set()
 
     while True:
-        now = datetime.datetime.now()
+        now = get_local_now()
         today_str = now.strftime("%d-%m-%Y")
 
         if today_str in PRAYER_TIMES:
             times = PRAYER_TIMES[today_str]
             for name, time_str in times.items():
-                prayer_time = datetime.datetime.strptime(f"{today_str} {time_str}", "%d-%m-%Y %H:%M")
+                prayer_time = datetime.datetime.strptime(
+                    f"{today_str} {time_str}", "%d-%m-%Y %H:%M"
+                ).replace(tzinfo=LOCAL_TIMEZONE)
+
                 notify_time = prayer_time - datetime.timedelta(minutes=NOTIFY_BEFORE_MINUTES)
 
-                # Проверка времени и если ещё не уведомляли
-                if now >= notify_time and now < prayer_time and (today_str, name) not in notified:
-                    await send_telegram_message(f"📿 Напоминание: скоро <b>{name}</b> в {time_str}")
+                if notify_time <= now < prayer_time and (today_str, name) not in notified:
+                    message = f"📿 Напоминание: скоро <b>{name}</b> — в <b>{time_str}</b>"
+                    await send_telegram_message(message)
                     notified.add((today_str, name))
 
-        await asyncio.sleep(30)  # Проверять каждые 30 секунд
+        await asyncio.sleep(30)
 
 if __name__ == "__main__":
     asyncio.run(schedule_notifications())
